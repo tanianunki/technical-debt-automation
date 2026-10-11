@@ -55,7 +55,8 @@ Docker. Con la clave en `.env`, `make demo-local` ejecuta el mismo código con e
 dentro del contenedor: ese camino se comprobó después de punta a punta (`verified`, 12
 turnos, `claude-opus-5-5`, `runs/20261011-005005`). El texto de
 «Corrección» y el nombre del test los elige el modelo y varían. Para ver el diff:
-`git --git-dir=runs/<id>/git show`. `make demo-github` no se ha ejecutado contra GitHub; si
+`git --git-dir=runs/<id>/git show`. `make demo-github` se ejecutó contra GitHub el mismo día:
+[PR #1](https://github.com/tanianunki/news-api/pull/1), `verify` en verde y auto-merge a `main`. Si
 el push o el PR fallan, la decisión es `failed` y la validación queda en el reporte.
 
 ## Qué usa Claude y qué es determinista
