@@ -52,7 +52,6 @@ def passed(pytest_run: subprocess.CompletedProcess) -> int:
 def main() -> Checks:
     commands = [" ".join(c) for c in (INSTALL, RUN_JUDGE, RUN_TESTS, AUDIT, DEPRECATIONS)]
     out = Checks(commands=commands, coverage=COVERAGE, gaps=GAPS)
-    log = []
 
     sh([sys.executable, "-m", "venv", "/tmp/venv"])
     install = sh(INSTALL)
@@ -73,35 +72,43 @@ def main() -> Checks:
     tests = sh(RUN_TESTS)
     out.tests_passed = passed(tests)
     if not out.tests_passed:
-        log.append(tests.stdout[-1500:])
+        out.log += tests.stdout[-1500:]
 
-    # 4. Dependencias vulnerables: base de advisories por paquete y versión.
-    audit = sh(AUDIT)
+    vulnerable(sh(AUDIT), out)
+    deprecated(sh(DEPRECATIONS), out)
+    return out
+
+
+def vulnerable(audit: subprocess.CompletedProcess, out: Checks) -> None:
+    """4. Dependencias vulnerables: base de advisories por paquete y versión."""
     try:
         for dep in json.loads(audit.stdout)["dependencies"]:
             # pip-audit puede repetir un advisory con distintas versiones corregidas: se unen.
             fixes: dict[str, set[str]] = {}
-            for vuln in dep.get("vulns", []):
+            for vuln in dep["vulns"]:  # una dependencia omitida no trae esta clave
                 fixes.setdefault(vuln["id"], set()).update(vuln["fix_versions"])
             for vuln_id, versions in fixes.items():
                 fixed = ", ".join(sorted(versions)) or "ninguna"
                 detail = f"{dep['name']} {dep['version']}; versiones corregidas: {fixed}"
                 finding = Finding(id=vuln_id, kind="vulnerable", file="requirements.txt", detail=detail)
                 out.findings.append(finding)
-    except (ValueError, KeyError):
-        out.errors.append("pip-audit no produjo un resultado legible")
-        log.append(audit.stderr[-500:])
+        if audit.returncode != (1 if out.findings else 0):  # 0 = limpio, 1 = con hallazgos
+            raise ValueError
+    except (ValueError, KeyError):  # «sin hallazgos» solo vale si la auditoría fue completa
+        out.errors.append("pip-audit no produjo un resultado completo")
+        out.log += audit.stderr[-500:]
 
-    # 5. APIs deprecadas: las declara el propio código al ejecutarse; un escáner no las ve.
-    deprecations = sh(DEPRECATIONS)
-    if "DeprecationWarning" in deprecations.stderr:
-        warning = deprecations.stderr[deprecations.stderr.rfind("DeprecationWarning") :]
+
+def deprecated(imported: subprocess.CompletedProcess, out: Checks) -> None:
+    """5. APIs deprecadas: las declara el propio código al ejecutarse; un escáner no las ve."""
+    if "DeprecationWarning" in imported.stderr:
+        warning = imported.stderr[imported.stderr.rfind("DeprecationWarning") :]
         detail = " ".join(warning.split())[:400]
         finding = Finding(id=f"DEPRECATED:{MODULE}", kind="deprecated", file=MODULE_FILE, detail=detail)
         out.findings.append(finding)
-
-    out.log = "\n".join(log)
-    return out
+    elif imported.returncode != 0:  # falló por otra causa: no se sabe si hay deprecaciones
+        out.errors.append(f"no se pudo importar {MODULE} para buscar deprecaciones")
+        out.log += imported.stderr[-500:]
 
 
 if __name__ == "__main__":

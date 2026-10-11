@@ -52,9 +52,11 @@ Es la salida de una ejecución real del 2026-10-11 con `claude-sonnet-5-5` (alre
 minuto). **En esa ejecución el agente corrió en el host**, con la sesión local de Claude
 Code, porque no había clave del modelo para el contenedor; los checks sí corrieron en
 Docker. Con la clave en `.env`, `make demo-local` ejecuta el mismo código con el agente
-dentro del contenedor: ese camino solo se comprobó hasta la autenticación. El texto de
+dentro del contenedor: ese camino se comprobó después de punta a punta (`verified`, 12
+turnos, `claude-opus-5-5`, `runs/20261011-005005`). El texto de
 «Corrección» y el nombre del test los elige el modelo y varían. Para ver el diff:
-`git --git-dir=runs/<id>/git show`. `make demo-github` no se ha ejecutado contra GitHub.
+`git --git-dir=runs/<id>/git show`. `make demo-github` no se ha ejecutado contra GitHub; si
+el push o el PR fallan, la decisión es `failed` y la validación queda en el reporte.
 
 ## Qué usa Claude y qué es determinista
 
@@ -77,6 +79,7 @@ dentro del contenedor: ese camino solo se comprobó hasta la autenticación. El 
 - El contenedor reduce el daño, no lo elimina: red sin restricción de destino y kernel
   compartido. El agente puede leer su propia clave del modelo.
 - La validación comprueba efectos (tests, escáner, warning), no intención: silenciar el
-  warning pasaría el detector. Nadie revisa el diff salvo que se exija revisión humana.
+  warning pasaría el detector, y una prueba nueva trivial cumpliría «un test más». Nadie
+  revisa el diff salvo que se exija revisión humana.
 - `checks.py` conoce tres datos de `news-api` (juez, módulo y mutación); no es genérico.
 - El resultado del modelo no es reproducible bit a bit.

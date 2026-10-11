@@ -64,6 +64,8 @@ def run(repo: str, do_publish: bool = False) -> Report:
         return end("inconclusive", "; ".join(base.errors))
     if not base.judge_passed or not base.judge_catches_break:
         return end("inconclusive", "el juez previo no pasa o no detecta una copia rota")
+    if not base.tests_passed:  # sin línea base en verde no se puede exigir «un test más»
+        return end("inconclusive", "los tests iniciales no pasan todos")
     if not base.findings:
         return end("no_change", "la auditoría no encontró hallazgos")
     # Se congelan ahora: el agente no puede ampliar su propio alcance.
@@ -128,7 +130,8 @@ def run(repo: str, do_publish: bool = False) -> Report:
     try:
         report.pr_url, note = publish.publish(report, git_dir, branch)
     except subprocess.CalledProcessError as error:
-        note = f"validado, pero no se pudo publicar: {error.stderr.strip()[:300]}"
+        # La evidencia de la validación sigue en `review` y `head_sha`; la decisión dice que no hay PR.
+        return end("failed", f"validado, pero no se pudo publicar: {error.stderr.strip()[:300]}")
     return end("verified", note)
 
 
@@ -157,5 +160,4 @@ if __name__ == "__main__":
     if to_github and not publish.SLUG.fullmatch(target):
         sys.exit("Para publicar, el repositorio debe indicarse como owner/repo (TDA_REPO=owner/repo).")
     final = run(target, to_github)
-    published = bool(final.pr_url) or not to_github or final.decision != "verified"
-    sys.exit(0 if final.decision in ("verified", "no_change") and published else 1)
+    sys.exit(0 if final.decision in ("verified", "no_change") else 1)

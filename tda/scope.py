@@ -3,6 +3,9 @@
 Se evalúa en el host sobre lo que Git dice que cambió, nunca sobre lo que afirma el
 agente. Decide la copia del host; la de la imagen es de solo lectura y no participa:
 el evaluado no puede relajar a su evaluador.
+
+Es una barrera de publicación, no de escritura: el agente sí puede tocar cualquier archivo
+del checkout desechable; lo que no puede es que ese cambio llegue a un commit.
 """
 
 import os

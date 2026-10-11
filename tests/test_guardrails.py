@@ -3,11 +3,12 @@
 Los que ejecutan contenedores necesitan Docker y la imagen `tda-sandbox` (`make test`).
 """
 
+import subprocess
 from pathlib import Path
 
 import pytest
 
-from tda import publish, run, sandbox, scope
+from tda import checks, publish, run, sandbox, scope
 from tda.report import AgentResult, AgentRun, Checks, Finding, Report
 
 NEWS_API = Path(__file__).parent.parent.parent / "news-api"
@@ -99,6 +100,59 @@ def test_inconclusive_validation_never_commits(tmp_path, monkeypatch):
 
     report = run.run(str(NEWS_API), do_publish=True)
     assert report.decision == "inconclusive" and report.head_sha == ""
+
+
+def test_failing_initial_tests_stop_the_run(tmp_path, monkeypatch):
+    """Sin todos los tests iniciales en verde no hay línea base: el agente ni empieza."""
+    red = Checks(findings=[FINDING], judge_passed=4, judge_catches_break=True, tests_passed=0)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(sandbox, "checks", lambda work: red)
+    monkeypatch.setattr(sandbox, "fix", lambda *args: pytest.fail("no debe corregir"))
+
+    assert run.run(str(NEWS_API)).decision == "inconclusive"
+
+
+@pytest.mark.parametrize(
+    ("detector", "returncode", "stdout", "stderr"),
+    [
+        (checks.vulnerable, 1, "", "ERROR: Failed to install packages"),  # no pudo auditar
+        (checks.vulnerable, 1, '{"dependencies": [{"name": "x", "version": "1", "vulns": []}]}', ""),
+        (checks.vulnerable, 0, '{"dependencies": [{"name": "x", "skip_reason": "no está en PyPI"}]}', ""),
+        (checks.deprecated, 1, "", "ModuleNotFoundError: No module named 'app'"),  # no pudo importar
+    ],
+)
+def test_incomplete_detector_is_an_error(detector, returncode, stdout, stderr):
+    """Un detector que no terminó bien reporta un error, no «sin hallazgos»."""
+    out = Checks()
+    detector(subprocess.CompletedProcess([], returncode, stdout, stderr), out)
+    assert out.errors and not out.findings
+
+
+def test_failed_publication_is_not_verified(tmp_path, monkeypatch):
+    """Un cambio validado que no pudo publicarse termina en `failed`, con su evidencia."""
+    results = iter([
+        Checks(findings=[FINDING], judge_passed=4, judge_catches_break=True, tests_passed=4),
+        Checks(judge_passed=4, judge_catches_break=True, tests_passed=5),
+    ])  # fmt: skip
+
+    def agent(work, findings, reason):
+        (work / "requirements.txt").write_text("orjson==3.11.6\n")
+        (work / "tests/test_regression.py").write_text("def test_new(): assert True\n")
+        return AgentRun(result=AgentResult(outcome="fixed", summary="ok"))
+
+    def rejected(*cmd):
+        raise subprocess.CalledProcessError(1, cmd[0], stderr="permission denied")
+
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "owner").mkdir()
+    (tmp_path / "owner/repo").symlink_to(NEWS_API)  # se clona en local con nombre owner/repo
+    monkeypatch.setattr(sandbox, "checks", lambda work: next(results))
+    monkeypatch.setattr(sandbox, "fix", agent)
+    monkeypatch.setattr(publish, "sh", rejected)
+
+    report = run.run("owner/repo", do_publish=True)
+    assert report.decision == "failed" and report.pr_url == ""
+    assert report.head_sha and report.review  # la validación local queda registrada
 
 
 def test_sandbox_profiles(tmp_path, monkeypatch):
