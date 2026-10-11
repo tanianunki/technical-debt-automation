@@ -59,6 +59,21 @@ turnos, `claude-opus-5-5`, `runs/20261011-005005`). El texto de
 [PR #1](https://github.com/tanianunki/news-api/pull/1), `verify` en verde y auto-merge a `main`. Si
 el push o el PR fallan, la decisión es `failed` y la validación queda en el reporte.
 
+## Repetir la demo
+
+Cada ejecución clona el repositorio de nuevo en `runs/<id>/`, así que no hay estado que
+limpiar entre ejecuciones; `make clean` solo borra los reportes anteriores.
+
+| Demo | Qué hay que restaurar | Cómo |
+|---|---|---|
+| `make demo-local` | nada: nunca modifica `../news-api`, trabaja sobre un clon | volver a ejecutarla |
+| `make demo-local`, si actualizaste `../news-api` con `git pull` tras un merge | el clon local, que ya estaría corregido | `git -C ../news-api reset --hard initial` |
+| `make demo-github` | `main` en GitHub, que ya recibió la corrección | [github-setup.md, paso 5](github-setup.md#5-volver-al-estado-inicial-para-repetir-la-demo) |
+
+Señal de que falta restaurar: la ejecución termina en `no_change — la auditoría no encontró
+hallazgos`. Antes de grabar conviene comprobar el estado inicial con los comandos del
+bloque 1 (tests en verde, `pip-audit` y la deprecación en rojo).
+
 ## Qué usa Claude y qué es determinista
 
 | Paso | Quién |

@@ -55,12 +55,27 @@ make demo-github TDA_REPO=OWNER/news-api
 gh pr checks --repo OWNER/news-api --watch <número>   # verify → merge automático
 ```
 
-## 5. Volver al estado inicial
+## 5. Volver al estado inicial para repetir la demo
+
+Después de una ejecución, `main` ya está corregido y `make demo-github` terminaría en
+`no_change`. Para repetirla hay que devolver `main` al commit etiquetado `initial`. La
+protección impide el push forzado (también a administradores), así que se retira un momento:
 
 ```sh
-gh api -X DELETE repos/OWNER/news-api/branches/main/protection
-git -C ../news-api push --force origin initial:main
-# vuelve a aplicar el paso 3
+gh api user --jq .login                                              # debe ser OWNER (gh auth switch --user OWNER)
+gh api -X DELETE repos/OWNER/news-api/branches/main/protection       # 1. quitar la protección
+git -C ../news-api push --force origin initial:main                  # 2. main vuelve al estado inicial
+gh run list --repo OWNER/news-api --limit 1                          # 3. esperar a que el CI termine: rojo a propósito
+# 4. volver a aplicar el bloque de protección del paso 3 (el ajuste de auto-merge se conserva)
+gh api repos/OWNER/news-api/branches/main --jq .protection.required_status_checks.contexts   # ["verify"]
+make demo-github TDA_REPO=OWNER/news-api                             # 5. repetir
 ```
 
-Las ramas `debt/*` ya integradas se borran solas; cierra los PR que hayan quedado abiertos.
+No sigas al paso 5 sin ver `["verify"]`: sin el check requerido `publish.py` abre el PR pero
+no pide auto-merge. Entre el paso 1 y el 4 `main` queda sin protección; no ejecutes la demo
+en ese intervalo.
+
+Qué queda de la ejecución anterior y no estorba: el PR ya integrado sigue en el historial de
+PR (cada ejecución crea una rama `debt/<id>` y un PR nuevos) y las ramas integradas se borran
+solas. Si un PR quedó abierto porque `verify` falló, ciérralo con
+`gh pr close <número> --repo OWNER/news-api --delete-branch`.
